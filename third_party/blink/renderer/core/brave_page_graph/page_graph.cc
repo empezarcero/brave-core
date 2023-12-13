@@ -86,6 +86,7 @@
 #include "brave/third_party/blink/renderer/core/brave_page_graph/requests/request_tracker.h"
 #include "brave/third_party/blink/renderer/core/brave_page_graph/requests/tracked_request.h"
 #include "brave/third_party/blink/renderer/core/brave_page_graph/scripts/script_tracker.h"
+#include "brave/third_party/blink/renderer/core/brave_page_graph/scripts/script_signature.h"
 #include "brave/third_party/blink/renderer/core/brave_page_graph/types.h"
 #include "brave/third_party/blink/renderer/core/brave_page_graph/utilities/response_metadata.h"
 #include "brave/third_party/blink/renderer/core/brave_page_graph/utilities/urls.h"
@@ -644,6 +645,21 @@ void PageGraph::RegisterPageGraphScriptCompilation(
   if (script_url.IsEmpty() || script_url.ProtocolIsAbout()) {
     script_url = classic_script.SourceUrl();
   }
+  VLOG(1) << "RegisterPageGraphScriptCompilation: " << script_url;
+  auto script_signature = std::make_unique<blink::ScriptSignature>(classic_script.SourceText().ToString());
+  VLOG(1) << script_url << " is " << (script_signature->IsSigned()? "signed" : "not signed");
+  bool trusted = false;
+  if (referrer_info.GetParentScriptId() != 0) {
+    NodeScript* const parent_node = script_tracker_.GetScriptNode(
+        execution_context->GetIsolate(), referrer_info.GetParentScriptId());
+    if (parent_node) {
+      const ScriptData& data = parent_node->GetScriptData();
+      trusted = data.source.is_signed && data.source.is_signature_valid && data.source.is_trusted;
+    }
+  } else {
+    trusted = script_signature->IsSigned() && script_signature->IsSignatureValid();
+  }
+  
   ScriptData script_data{
       .code = classic_script.SourceText().ToString(),
       .source = {
@@ -651,6 +667,9 @@ void PageGraph::RegisterPageGraphScriptCompilation(
           .parent_script_id = referrer_info.GetParentScriptId(),
           .url = script_url,
           .location_type = classic_script.SourceLocationType(),
+          .is_signed = script_signature->IsSigned(),
+          .is_signature_valid = script_signature->IsSignatureValid(),
+          .is_trusted = trusted
       }};
 
   // Lookup parent script id for kJavascriptUrl scripts.
@@ -690,6 +709,22 @@ void PageGraph::RegisterPageGraphModuleCompilation(
   if (script_url.IsEmpty() || script_url.ProtocolIsAbout()) {
     script_url = params.SourceURL();
   }
+  VLOG(1) << "RegisterPageGraphModuleCompilation: " << script_url;
+  auto script_signature = std::make_unique<blink::ScriptSignature>(params.GetSourceText().ToString());
+  VLOG(1) << script_url << " is " << (script_signature->IsSigned()? "signed" : "not signed");
+  
+  bool trusted = false;
+  if (referrer_info.GetParentScriptId() != 0) {
+    NodeScript* const parent_node = script_tracker_.GetScriptNode(
+        execution_context->GetIsolate(), referrer_info.GetParentScriptId());
+    if (parent_node) {
+      const ScriptData& data = parent_node->GetScriptData();
+      trusted = data.source.is_signed && data.source.is_signature_valid && data.source.is_trusted;
+    }
+  } else {
+    trusted = script_signature->IsSigned() && script_signature->IsSignatureValid();
+  }
+
   ScriptData script_data{
       .code = params.GetSourceText().ToString(),
       .source = {
@@ -697,6 +732,9 @@ void PageGraph::RegisterPageGraphModuleCompilation(
           .parent_script_id = referrer_info.GetParentScriptId(),
           .url = script_url,
           .is_module = true,
+          .is_signed = script_signature->IsSigned(),
+          .is_signature_valid = script_signature->IsSignatureValid(),
+          .is_trusted = trusted
       }};
 
   RegisterScriptCompilation(execution_context, script_id, script_data);
@@ -1647,6 +1685,8 @@ void PageGraph::RegisterScriptCompilation(
   VLOG(1) << "RegisterScriptCompilation) script id: " << script_id
           << ", location: "
           << static_cast<int>(script_data.source.location_type)
+          << ", is_signed: " << script_data.source.is_signed
+          << ", is_signature_valid: " << script_data.source.is_signature_valid
           << ", script: \n"
           << (VLOG_IS_ON(2) ? script_data.code : String("<VLOG(2)>"));
 

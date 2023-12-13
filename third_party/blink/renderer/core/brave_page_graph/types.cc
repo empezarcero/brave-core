@@ -49,7 +49,8 @@ std::string FingerprintingRule::ToString() const {
 bool ScriptSource::operator==(const ScriptSource& rhs) const {
   auto tie = [](const ScriptSource& v) {
     return std::tie(v.dom_node_id, v.parent_script_id, v.url, v.function_name,
-                    v.location_type, v.is_module, v.is_eval);
+                    v.location_type, v.is_module, v.is_eval, v.is_signed,
+                    v.is_signature_valid);
   };
   return tie(*this) == tie(rhs);
 }

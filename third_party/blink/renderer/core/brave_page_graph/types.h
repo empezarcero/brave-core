@@ -76,6 +76,9 @@ struct ScriptSource {
       blink::ScriptSourceLocationType::kUnknown;
   bool is_module = false;
   bool is_eval = false;
+  bool is_signed = false;
+  bool is_signature_valid = false;
+  bool is_trusted = false;
 
   bool operator==(const ScriptSource& rhs) const;
 };
